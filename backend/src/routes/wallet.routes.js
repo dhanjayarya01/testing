@@ -4,28 +4,44 @@ import {
     getWalletBalance,
     addFunds,
     withdrawFunds,
-    getTransactionHistory
+    getTransactionHistory,
+    toggleWalletStatus
 } from "../controllers/wallet.controller.js";
 
 const router = Router();
 
+// Middleware to verify JWT token
 router.use(verifyJWT);
 
-// Only allow certain user types to access wallet features
-router.use((req, res, next) => {
+// Middleware to check user type
+const checkWalletAccess = (req, res, next) => {
     const allowedTypes = ["Researcher", "Innovator", "Entrepreneur"];
-    if (!allowedTypes.includes(req.user.userType)) {
+    if (!allowedTypes.includes(req.user?.userType)) {
         return res.status(403).json({
             success: false,
             message: "Wallet features not available for this user type"
         });
     }
     next();
-});
+};
 
-router.route("/balance").get(getWalletBalance);
-router.route("/add").post(addFunds);
-router.route("/withdraw").post(withdrawFunds);
-router.route("/transactions").get(getTransactionHistory);
+// Apply wallet access check to all routes
+router.use(checkWalletAccess);
+
+// Wallet routes
+router.get("/balance", getWalletBalance);
+router.post("/add", addFunds);
+router.post("/withdraw", withdrawFunds);
+router.get("/transactions", getTransactionHistory);
+router.patch("/toggle-status", toggleWalletStatus);
+
+// Error handling middleware
+router.use((err, req, res, next) => {
+    console.error("Wallet Route Error:", err);
+    res.status(err.status || 500).json({
+        success: false,
+        message: err.message || "Something went wrong in wallet operation"
+    });
+});
 
 export default router; 

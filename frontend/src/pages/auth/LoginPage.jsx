@@ -8,7 +8,7 @@ import Home from '../Home.jsx';
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const {apiContext,setCurrentuserinfo}=useContext(ApiContext)
+  const {apiContext,setIsLoggedIn}=useContext(ApiContext)
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -28,15 +28,13 @@ const LoginPage = () => {
 
     try {
       const response = await apiContext.login(formData);
-      if(response?.data?.success){
-        setCurrentuserinfo(response?.data?.user);
-      }
-      console.log("response in login",response);
-      toast.success('Login successful!',response?.data?.message);
-      navigate('/Home');
+      navigate('/home');
+      setIsLoggedIn(true);
+      toast.success(response?.message);
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Login failed');
       console.log("error in login",error);
+      toast.error(error.response?.data?.message || 'Login failed');
+      // console.log("error in login",error);
     } finally {
       setLoading(false);
     }

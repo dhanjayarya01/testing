@@ -1,14 +1,15 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { useContext, useEffect } from 'react';
+import { useContext, useEffect, useCallback, memo } from 'react';
 import { ApiContext } from './context/Context';
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
 import Dashboard from './pages/Dashboard';
 import Home from './pages/Home';
+import CreatePage from './components/CreatePage';
 
-function App() {
+const App = memo(() => {
     const { 
         apiContext, 
         isLoggedIn, 
@@ -17,40 +18,41 @@ function App() {
         currentuserinfo
     } = useContext(ApiContext);
 
-    useEffect(() => {
-        const checkAuthStatus = async () => {
-            try {
-                const token = localStorage.getItem('token');
-                if (!token) {
-                    setIsLoggedIn(false);
-                    return;
-                }
+    const checkAuthStatus = useCallback(async () => {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setIsLoggedIn(false);
+                return;
+            }
 
-                const response = await apiContext.getCurrentUser();
-                if (response.success) {
-                    setCurrentuserinfo(response.data);
-                    setIsLoggedIn(true);
-                } else {
-                    setIsLoggedIn(false);
-                    localStorage.removeItem('token');
-                }
-            } catch (error) {
-                console.error('Auth check failed:', error);
+            setIsLoggedIn(true);
+
+            const response = await apiContext.getCurrentUser();
+            if (response?.success) {
+                setCurrentuserinfo(response?.data);
+                setIsLoggedIn(true);
+            } else {
                 setIsLoggedIn(false);
                 localStorage.removeItem('token');
             }
-        };
-
+        } catch (error) {
+            console.error('Auth check failed:', error);
+            setIsLoggedIn(false);
+            localStorage.removeItem('token');
+        }
+    }, [apiContext, setIsLoggedIn, setCurrentuserinfo]);
+    
+    useEffect(() => {
         checkAuthStatus();
-    }, [setCurrentuserinfo]);
+    }, [checkAuthStatus]);
 
-   
-    const ProtectedRoute = ({ children }) => {
+    const ProtectedRoute = useCallback(({ children }) => {
         if (!isLoggedIn) {
             return <Navigate to="/login" replace />;
         }
         return children;
-    };
+    }, [isLoggedIn]);
 
     return (
         <Router>
@@ -67,14 +69,17 @@ function App() {
             />
             <Routes>
                 {/* Public Routes */}
-                <Route path="/" element={
-                    isLoggedIn ? <Navigate to="/home"  /> : <LoginPage />
+                <Route path="/home" element={
+                <Home/>
                 } />
-                <Route path="/login" element={
-                    isLoggedIn ? <Navigate to="/home"  /> : <LoginPage />
+                <Route path="/" element={
+                  <LoginPage />
                 } />
                 <Route path="/register" element={
                     <RegisterPage />
+                } />
+                <Route path="/create" element={
+                    <CreatePage />
                 } />
 
                 {/* Protected Routes */}
@@ -89,11 +94,16 @@ function App() {
                     </ProtectedRoute>
                 } />
 
-                {/* Catch all route ,koi bhi  unknownroute pe jayega toh home pe jayega */}
+                {/* Catch all route */}
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         </Router>
     );
-}
+}, (prevProps, nextProps) => {
+    // Custom comparison function
+    return true; // Only re-render when currentuserinfo changes through the useEffect
+});
+
+App.displayName = 'App';
 
 export default App;

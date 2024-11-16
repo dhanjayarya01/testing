@@ -1,22 +1,22 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import { User } from "../models/user.model.js";
+import { Wallet } from "../models/wallet.model.js";
 
 const getWalletBalance = asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id);
+    const wallet = await Wallet.findOne({ user: req.user._id });
     
-    if (!user) {
-        throw new ApiError(404, "User not found");
+    if (!wallet) {
+        throw new ApiError(404, "Wallet not found");
     }
 
-    if (!user.hasWalletAccess()) {
-        throw new ApiError(403, "Wallet feature is only available for Researchers and Innovators");
+    if (!wallet.isActive) {
+        throw new ApiError(403, "Wallet is inactive");
     }
 
-    return res
-        .status(200)
-        .json(new ApiResponse(200, user.profileDetails.wallet, "Wallet details fetched successfully"));
+    return res.status(200).json(
+        new ApiResponse(200, { balance: wallet.balance }, "Wallet balance fetched")
+    );
 });
 
 const addFunds = asyncHandler(async (req, res) => {
@@ -26,38 +26,40 @@ const addFunds = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Invalid amount");
     }
 
-    const user = await User.findById(req.user._id);
-    if (!user) {
-        throw new ApiError(404, "User not found");
+    const wallet = await Wallet.findOne({ user: req.user._id });
+    if (!wallet) {
+        throw new ApiError(404, "Wallet not found");
     }
 
-    if (!user.hasWalletAccess()) {
-        throw new ApiError(403, "Wallet feature is only available for Researchers and Innovators");
+    if (!wallet.isActive) {
+        throw new ApiError(403, "Wallet is inactive");
     }
 
-    const updatedUser = await User.findByIdAndUpdate(
-        user._id,
+    const reference = `CR-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+
+    const updatedWallet = await Wallet.findByIdAndUpdate(
+        wallet._id,
         {
-            $inc: { "profileDetails.wallet.balance": amount },
+            $inc: { balance: amount },
             $push: {
-                "profileDetails.wallet.transactions": {
+                transactions: {
                     type: 'credit',
                     amount,
                     description: description || 'Funds added',
+                    reference,
                     timestamp: new Date()
                 }
             }
         },
-        { new: true }
+        { new: true, runValidators: true }
     );
 
-    return res
-        .status(200)
-        .json(new ApiResponse(
-            200, 
-            updatedUser.profileDetails.wallet, 
-            "Funds added successfully"
-        ));
+    return res.status(200).json(
+        new ApiResponse(200, {
+            balance: updatedWallet.balance,
+            transaction: updatedWallet.transactions[updatedWallet.transactions.length - 1]
+        }, "Funds added successfully")
+    );
 });
 
 const withdrawFunds = asyncHandler(async (req, res) => {
@@ -67,67 +69,86 @@ const withdrawFunds = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Invalid amount");
     }
 
-    const user = await User.findById(req.user._id);
-    if (!user) {
-        throw new ApiError(404, "User not found");
+    const wallet = await Wallet.findOne({ user: req.user._id });
+    if (!wallet) {
+        throw new ApiError(404, "Wallet not found");
     }
 
-    if (!user.hasWalletAccess()) {
-        throw new ApiError(403, "Wallet feature is only available for Researchers and Innovators");
+    if (!wallet.isActive) {
+        throw new ApiError(403, "Wallet is inactive");
     }
 
-    if (user.profileDetails.wallet.balance < amount) {
+    if (wallet.balance < amount) {
         throw new ApiError(400, "Insufficient funds");
     }
 
-    const updatedUser = await User.findByIdAndUpdate(
-        user._id,
+    const reference = `DB-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+
+    const updatedWallet = await Wallet.findByIdAndUpdate(
+        wallet._id,
         {
-            $inc: { "profileDetails.wallet.balance": -amount },
+            $inc: { balance: -amount },
             $push: {
-                "profileDetails.wallet.transactions": {
+                transactions: {
                     type: 'debit',
                     amount,
                     description: description || 'Funds withdrawn',
+                    reference,
                     timestamp: new Date()
                 }
             }
         },
-        { new: true }
+        { new: true, runValidators: true }
     );
 
-    return res
-        .status(200)
-        .json(new ApiResponse(
-            200, 
-            updatedUser.profileDetails.wallet, 
-            "Funds withdrawn successfully"
-        ));
+    return res.status(200).json(
+        new ApiResponse(200, {
+            balance: updatedWallet.balance,
+            transaction: updatedWallet.transactions[updatedWallet.transactions.length - 1]
+        }, "Funds withdrawn successfully")
+    );
 });
 
 const getTransactionHistory = asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id);
+    const wallet = await Wallet.findOne({ user: req.user._id })
+        .select('transactions');
     
-    if (!user) {
-        throw new ApiError(404, "User not found");
+    if (!wallet) {
+        throw new ApiError(404, "Wallet not found");
     }
 
-    if (!user.hasWalletAccess()) {
-        throw new ApiError(403, "Wallet feature is only available for Researchers and Innovators");
+    if (!wallet.isActive) {
+        throw new ApiError(403, "Wallet is inactive");
     }
 
-    return res
-        .status(200)
-        .json(new ApiResponse(
-            200, 
-            user.profileDetails.wallet.transactions, 
-            "Transaction history fetched successfully"
-        ));
+    return res.status(200).json(
+        new ApiResponse(200, { 
+            transactions: wallet.transactions 
+        }, "Transaction history fetched")
+    );
+});
+
+const toggleWalletStatus = asyncHandler(async (req, res) => {
+    const wallet = await Wallet.findOne({ user: req.user._id });
+    
+    if (!wallet) {
+        throw new ApiError(404, "Wallet not found");
+    }
+
+    wallet.isActive = !wallet.isActive;
+    await wallet.save();
+
+    return res.status(200).json(
+        new ApiResponse(200, { 
+            isActive: wallet.isActive 
+        }, `Wallet ${wallet.isActive ? 'activated' : 'deactivated'} successfully`)
+    );
 });
 
 export {
     getWalletBalance,
     addFunds,
     withdrawFunds,
-    getTransactionHistory
+    getTransactionHistory,
+    toggleWalletStatus
 }; 
